@@ -36,7 +36,7 @@ async def lifespan(app: FastAPI):
   base_url = settings.NEXANDRIA_URL
   headers = { 'API-Key': settings.NEXANDRIA_API_KEY }
   timeout = httpx.Timeout(settings.NEXANDRIA_TIMEOUT_SECS)
-  limits = httpx.Limits(max_keepalive_connections=1, max_connections=1)
+  limits = httpx.Limits(max_keepalive_connections=5, max_connections=5)
   app_state['conn_pool'] = httpx.AsyncClient(
                                             headers=headers,
                                             base_url=base_url,

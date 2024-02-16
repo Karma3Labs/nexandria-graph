@@ -5,7 +5,7 @@ class Settings(BaseSettings):
     NEXANDRIA_URL:str = 'https://api.nexandria.com'
     NEXANDRIA_API_KEY:str = 'nexandria'
     NEXANDRIA_MAX_CONCURRENCY: int = 5
-    NEXANDRIA_TIMEOUT_MS: int = 6000
+    NEXANDRIA_TIMEOUT_MS: int = 5000
     NEXANDRIA_RATE_LIMIT:int = 12
 
     LOG_LEVEL: str = 'INFO'

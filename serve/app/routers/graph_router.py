@@ -20,8 +20,8 @@ async def get_neighbors_eth_transfers(
   httpxclient: httpx.AsyncClient = Depends(httpx_pool.get_async_client)
 ):
   logger.debug(addresses)
-  loop = asyncio.get_event_loop()
-  result = await nexandria_client.fetch_graph(httpxclient, addresses)
+  result = await nexandria_client.fetch_graph(httpxclient, addresses, k, limit, 'eth')
+  logger.info(f"result from fetch_graph: {result}")
   return {"result": result}
 
 

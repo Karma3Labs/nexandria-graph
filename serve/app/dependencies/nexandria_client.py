@@ -3,7 +3,7 @@ from threading import Lock
 import httpx
 from loguru import logger
 from ..config import settings
-
+from dataclasses import dataclass
 class ThreadSafeCounter():
   def __init__(self):
     self._counter = 0
@@ -18,48 +18,88 @@ class ThreadSafeCounter():
 class ThreadSafeDict():
   def __init__(self):
     self._dict = {}
+    self._counter = 0
     self._lock = Lock()
 
   #add to dict if not present and return true/false
-  def add_if_not_in(self, key, val) -> bool:
+  def add_if_not_in(self, key, val) -> tuple[bool, int]:
     with self._lock:
       if not self._dict.get(key):
         self._dict[key] = val
-        return True
-      return False
+        self._counter += 1
+        return True, self._counter
+      return False, self._counter
 
   def get(self):
     with self._lock:
       return self._dict
-        
+
+@dataclass(frozen=True)
+class TaskContext:
+  max_depth: int
+  max_num_results: int
+  chain: str
+  params: dict
+  contract_addrs: list # TODO change to numpy Series
+
 # coroutine task
 async def fetch_address(
   httpxclient: httpx.AsyncClient,
-  group: asyncio.TaskGroup, 
-  counter: ThreadSafeCounter, 
+  task_group: asyncio.TaskGroup, 
   results: ThreadSafeDict,
-  address: str
+  address: str,
+  context: TaskContext
 ):
-  url = f"eth/v1/address/{address}/neighbors"
+  url = f"{context.chain}/v1/address/{address}/neighbors"
   logger.info(f"fetch_address: {url}")
-  params = { 'from_ts': 1672560000, 'to_ts': 1704096000, 'block_cp': 'native' }
-  r = await httpxclient.get(url, params=params)
-  # for i in range(1,5):
-  #   await asyncio.sleep(1)
-  #   v = counter.next_value()
-  #   if v < 5:
-  #     logger.debug(f"creating subtask {v} for address: {address}")
-  #     group.create_task(fetch_address(httpxclient, group, counter, results, address))
-  results.add_if_not_in(address, r.json())
+  try:
+    r = await httpxclient.get(url, params=context.params)
+  except Exception:
+    return
+  neighbors = r.json()['neighbors']
+  for neighbor in neighbors:
+    neighbor_addr = neighbor['neighbor_info']['address']
+    # check that this is an eoa to eoa transfer
+    if neighbor_addr not in context.contract_addrs: 
+      if neighbor["transfers_to_neighbor"] == 1:
+        v = 0.0001 if neighbor.get("fiat_to_neighbor") is None \
+          else float(neighbor.get("fiat_to_neighbor").replace(',',''))
+        key = "-".join((address, neighbor_addr))
+        val = {"i":address, "j":neighbor_addr, "v": v}
+        added, counter = results.add_if_not_in(key, val)
+        if added and counter < context.max_num_results:
+          task_group.create_task(fetch_address(httpxclient, task_group, results, neighbor_addr, context))
   return 
  
-async def fetch_graph(httpxclient: httpx.AsyncClient, addresses: list[str])->list[dict]:
+async def fetch_graph(
+    httpxclient: httpx.AsyncClient,
+    addresses: list[str],
+    k,
+    limit,
+    chain
+)->list[dict]:
   results = ThreadSafeDict()
+  context = TaskContext(
+    max_depth=k,
+    max_num_results=limit,
+    chain=chain,
+    params={ 'details': 'summary', 
+            'from_ts': 1672560000, # TODO avoid hardcoding; calculate last 12 months
+            'to_ts': 1704096000,  # TODO avoid hardcoding
+            'block_cp': 'native' # to specify the Zero address, typically used for fee/burn/mint transactions
+            },
+    contract_addrs=('0x39aa39c021dfbae8fac545936693ac917d5e7563','0x71660c4005ba85c37ccec55d0c4493e66fe775d3')
+  )
   # create task group
-  async with asyncio.TaskGroup() as group:
-    counter = ThreadSafeCounter()
+  async with asyncio.TaskGroup() as task_group:
     # create and issue tasks
-    [group.create_task(fetch_address(httpxclient, group, counter, results, addr)) for addr in addresses]
+    [task_group.create_task(fetch_address(
+                                        httpxclient, 
+                                        task_group, 
+                                        results, 
+                                        addr, 
+                                        context
+                                        )) for addr in addresses]
   # wait for all tasks to complete...
   # report all results
-  return results.get()
+  return list(results.get().values())

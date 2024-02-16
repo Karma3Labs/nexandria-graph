@@ -1,5 +1,11 @@
 ```
+curl -X 'GET'   'http://localhost:8000/graph/neighbors/eth_transfers?k=2&limit=10'   -H 'accept: application/json'   -H 'Content-Type: application/json'   -d '["0x6e0d9c6dd8a08509bb625caa35dc61a991406f62","0xb877f7bb52d28f06e60f557c00a56225124b357f", "0xbfa141e93226263cdde4cd5c847879205443b1a2"]' -s -o /tmp/nexandria_out.json -w "\ndnslookup: %{time_namelookup} | connect: %{time_connect} | appconnect: %{time_appconnect} | pretransfer: %{time_pretransfer} | redirect: %{time_redirect} | starttransfer: %{time_starttransfer} | total: %{time_total} | size: %{size_download}\n"
+
 curl -X 'GET'   'http://localhost:8000/graph/neighbors/eth_transfers?k=2&limit=10'   -H 'accept: application/json'   -H 'Content-Type: application/json'   -d '["0x6e0d9c6dd8a08509bb625caa35dc61a991406f62","0xb877f7bb52d28f06e60f557c00a56225124b357f"]' -s -o /tmp/nexandria_out.json -w "\ndnslookup: %{time_namelookup} | connect: %{time_connect} | appconnect: %{time_appconnect} | pretransfer: %{time_pretransfer} | redirect: %{time_redirect} | starttransfer: %{time_starttransfer} | total: %{time_total} | size: %{size_download}\n"
+
+
+curl -X 'GET'   'http://localhost:8000/graph/neighbors/eth_transfers?k=2&limit=10'   -H 'accept: application/json'   -H 'Content-Type: application/json'   -d '["0xbfa141e93226263cdde4cd5c847879205443b1a2"]' -s -o /tmp/nexandria_out.json -w "\ndnslookup: %{time_namelookup} | connect: %{time_connect} | appconnect: %{time_appconnect} | pretransfer: %{time_pretransfer} | redirect: %{time_redirect} | starttransfer: %{time_starttransfer} | total: %{time_total} | size: %{size_download}\n"
+
 ```
 
 ```
