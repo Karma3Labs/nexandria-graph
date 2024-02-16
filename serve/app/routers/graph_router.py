@@ -1,10 +1,12 @@
 from typing import Annotated
 import asyncio
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
+import httpx
 from loguru import logger
 
 from ..dependencies import nexandria_client
+from ..dependencies import httpx_pool
 
 router = APIRouter(tags=["graphs"])
 
@@ -15,10 +17,11 @@ async def get_neighbors_eth_transfers(
   addresses: list[str],
   k: Annotated[int, Query(le=5)] = 2,
   limit: Annotated[int | None, Query(le=1000)] = 100,
+  httpxclient: httpx.AsyncClient = Depends(httpx_pool.get_async_client)
 ):
   logger.debug(addresses)
   loop = asyncio.get_event_loop()
-  result = await nexandria_client.fetch_graph(addresses)
+  result = await nexandria_client.fetch_graph(httpxclient, addresses)
   return {"result": result}
 
 
