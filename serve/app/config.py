@@ -2,11 +2,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import computed_field, SecretStr
 
 class Settings(BaseSettings):  
-    NEXANDRIA_URL:str = 'https://api.nexandria.com'
-    NEXANDRIA_API_KEY:SecretStr = 'nexandria'
+    NEXANDRIA_URL: str = 'https://api.nexandria.com'
+    NEXANDRIA_API_KEY: SecretStr = 'nexandria'
     NEXANDRIA_MAX_CONCURRENCY: int = 5
     NEXANDRIA_TIMEOUT_MS: int = 5000
-    NEXANDRIA_RATE_LIMIT:int = 12
+    NEXANDRIA_RATE_LIMIT: int = 12
+
+    DEFAULT_TRANSFER_VALUE: float = 0.0001
 
     LOG_LEVEL: str = 'INFO'
 

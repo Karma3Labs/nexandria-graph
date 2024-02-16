@@ -77,8 +77,9 @@ async def fetch_address(
     if neighbor["transfers_to_neighbor"] == 0:
       logger.debug(f"skipping fetch for 0 transfer to address {neighbor_addr}")
       continue
-    v = 0.0001 if neighbor.get("fiat_to_neighbor") is None \
-              else float(neighbor.get("fiat_to_neighbor").replace(',',''))
+    v = settings.DEFAULT_TRANSFER_VALUE \
+          if neighbor.get("fiat_to_neighbor") is None \
+          else float(neighbor.get("fiat_to_neighbor").replace(',',''))
     key = "-".join((address, neighbor_addr))
     val = {"i":address, "j":neighbor_addr, "v": v}
     added, counter = results.add_if_not_in(key, val)
