@@ -14,9 +14,20 @@ from .routers.graph_router import router as graph_router
 from loguru import logger
 
 logger.remove()
-logger.add(sys.stdout, colorize=True, 
+level_per_module = {
+    "": "INFO",
+    "app": settings.LOG_LEVEL,
+    "silentlib": False
+}
+logger.add(sys.stdout, 
+           colorize=True, 
            format="<green>{time:HH:mm:ss}</green> | {module}:{file}:{function}:{line} | {level} | <level>{message}</level>",
-           level=settings.LOG_LEVEL)
+           filter=level_per_module,
+           level=0)
+# logger.add(sys.stdout, 
+#            colorize=True, 
+#            format="<green>{time:HH:mm:ss}</green> | {module}:{file}:{function}:{line} | {level} | <level>{message}</level>",
+#            level=settings.LOG_LEVEL)
 
 log.basicConfig(handlers=[logging.InterceptHandler()], level=0, force=True)
 log.getLogger("uvicorn").handlers = [logging.InterceptHandler()]
@@ -32,9 +43,9 @@ app_state = {}
 @asynccontextmanager
 async def lifespan(app: FastAPI):
   """Execute when API is started"""
-  logger.info(f"****WARNING****: {settings.NEXANDRIA_URL}")
+  logger.info(f"{settings}")
   base_url = settings.NEXANDRIA_URL
-  headers = { 'API-Key': settings.NEXANDRIA_API_KEY }
+  headers = { 'API-Key': settings.NEXANDRIA_API_KEY.get_secret_value() }
   timeout = httpx.Timeout(settings.NEXANDRIA_TIMEOUT_SECS)
   limits = httpx.Limits(max_keepalive_connections=5, max_connections=5)
   app_state['conn_pool'] = httpx.AsyncClient(
@@ -45,7 +56,7 @@ async def lifespan(app: FastAPI):
   yield
   """Execute when API is shutdown"""
   logger.info(f"closing conn_pool: {app_state['conn_pool']}")
-  await app_state['conn_pool'].close()
+  await app_state['conn_pool'].aclose()
 
 app = FastAPI(lifespan=lifespan, dependencies=[Depends(logging.get_logger)])
 app.include_router(graph_router, prefix='/graph')

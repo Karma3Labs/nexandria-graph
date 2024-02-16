@@ -4,6 +4,8 @@ import httpx
 from loguru import logger
 from ..config import settings
 from dataclasses import dataclass
+import time
+
 class ThreadSafeCounter():
   def __init__(self):
     self._counter = 0
@@ -53,22 +55,35 @@ async def fetch_address(
   url = f"{context.chain}/v1/address/{address}/neighbors"
   logger.info(f"fetch_address: {url}")
   try:
+    start_time = time.perf_counter()
     r = await httpxclient.get(url, params=context.params)
-  except Exception:
+    # TODO replace with a timer context manager
+    elapsed_time = time.perf_counter() - start_time
+    logger.debug(f"{url} took {elapsed_time} secs")
+    r.raise_for_status() # raise exception for any non-200 status
+  except httpx.HTTPError as exc:
+    logger.error(f"HTTP Exception for {exc.request.url} - {exc}")
     return
   neighbors = r.json()['neighbors']
   for neighbor in neighbors:
     neighbor_addr = neighbor['neighbor_info']['address']
-    # check that this is an eoa to eoa transfer
-    if neighbor_addr not in context.contract_addrs: 
-      if neighbor["transfers_to_neighbor"] == 1:
-        v = 0.0001 if neighbor.get("fiat_to_neighbor") is None \
-          else float(neighbor.get("fiat_to_neighbor").replace(',',''))
-        key = "-".join((address, neighbor_addr))
-        val = {"i":address, "j":neighbor_addr, "v": v}
-        added, counter = results.add_if_not_in(key, val)
-        if added and counter < context.max_num_results:
-          task_group.create_task(fetch_address(httpxclient, task_group, results, neighbor_addr, context))
+    # skip if this is an eoa to contract transfer
+    if neighbor_addr in context.contract_addrs:
+      logger.debug(f"skipping fetch for contract address {neighbor_addr}")
+      continue
+    # Nexandria will return transfers_to_neighbor = 0 if:
+    # a) transfer is outgoing (or)
+    # b) transfer is very old and happened before from_ts
+    if neighbor["transfers_to_neighbor"] == 0:
+      logger.debug(f"skipping fetch for 0 transfer to address {neighbor_addr}")
+      continue
+    v = 0.0001 if neighbor.get("fiat_to_neighbor") is None \
+              else float(neighbor.get("fiat_to_neighbor").replace(',',''))
+    key = "-".join((address, neighbor_addr))
+    val = {"i":address, "j":neighbor_addr, "v": v}
+    added, counter = results.add_if_not_in(key, val)
+    if added and counter < context.max_num_results:
+      task_group.create_task(fetch_address(httpxclient, task_group, results, neighbor_addr, context))
   return 
  
 async def fetch_graph(
