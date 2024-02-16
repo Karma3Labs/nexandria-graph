@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+.env.docker
+.*.credentials.json
+build/
+.venv
+*.pyc
+**/.ipynb_checkpoints
+**/.DS_Store
+**/lib/
+notebooks/data/
