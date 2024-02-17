@@ -1,7 +1,6 @@
 import asyncio
 from threading import Lock
 import aiohttp
-import numpy as np
 from loguru import logger
 from ..config import settings
 from dataclasses import dataclass
@@ -43,7 +42,7 @@ class TaskContext:
   max_num_results: int
   chain: str
   params: dict
-  blocklist: np.ndarray
+  blocklist: set
 
 # coroutine task
 async def fetch_address(
@@ -103,7 +102,7 @@ async def fetch_graph(
     k: int,
     limit: int,
     chain: str,
-    blocklist: np.ndarray
+    blocklist: set
 )->list[dict]:
   results = ThreadSafeDict()
   context = TaskContext(

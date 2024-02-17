@@ -12,8 +12,6 @@ uvicorn = "^0.27.1"
 loguru = "^0.7.2"
 psutil = "^5.9.8"
 pydantic-settings = "^2.1.0"
-numpy = "^1.26.4"
-pandas = "^2.2.0"
 aiohttp = "^3.9.3"
 
 

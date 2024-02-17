@@ -2,7 +2,6 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 import aiohttp
-import numpy as np
 from loguru import logger
 
 from ..dependencies import nexandria_client
@@ -19,7 +18,7 @@ async def get_neighbors_eth_transfers(
   k: Annotated[int, Query(le=5)] = 2,
   limit: Annotated[int | None, Query(le=1000)] = 100,
   http_pool: aiohttp.ClientSession = Depends(http_pool.get_async_client),
-  non_eoa_list: np.ndarray = Depends(blocklist.get_non_eoa_list)
+  non_eoa_list: set = Depends(blocklist.get_non_eoa_list)
 ):
   logger.debug(addresses)
   result = await nexandria_client.fetch_graph(

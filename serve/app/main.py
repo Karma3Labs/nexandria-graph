@@ -6,7 +6,6 @@ import aiohttp
 from fastapi import FastAPI, Depends, Request, Response
 from contextlib import asynccontextmanager
 import uvicorn
-import pandas as pd
 
 from .dependencies import logging
 from .config import settings
@@ -50,7 +49,7 @@ async def lifespan(app: FastAPI):
                                                    timeout=timeout,
                                                    headers=headers)
     logger.warning(f"loading blocklist")
-    app_state['non_eoa_list'] = pd.read_csv(settings.NON_EOA_LIST, sep=',', header=None).values
+    app_state['non_eoa_list'] = set(line.strip() for line in open(settings.NON_EOA_LIST))
     yield
     """Execute when API is shutdown"""
     logger.info(f"closing conn_pool: {app_state['conn_pool']}")
