@@ -28,7 +28,8 @@ async def get_neighbors_eth_transfers(
                                       limit, 
                                       'eth', 
                                       blocklist=non_eoa_list)
-  logger.info(f"result from fetch_graph: {result}")
+  logger.debug(f"result from fetch_graph: {result}")
+  logger.info(f"number of edges from fetch_graph: {len(result)}")
   return {"result": result}
 
 

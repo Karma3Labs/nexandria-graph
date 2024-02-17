@@ -49,6 +49,7 @@ async def lifespan(app: FastAPI):
                                                    timeout=timeout,
                                                    headers=headers)
     logger.warning(f"loading blocklist")
+    # TODO background loader to reload whenever a new version of blocklist is available
     app_state['non_eoa_list'] = set(line.strip() for line in open(settings.NON_EOA_LIST))
     yield
     """Execute when API is shutdown"""
