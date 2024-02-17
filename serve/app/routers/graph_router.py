@@ -21,15 +21,15 @@ async def get_neighbors_eth_transfers(
   non_eoa_list: set = Depends(blocklist.get_non_eoa_list)
 ):
   logger.debug(addresses)
-  result = await nexandria_client.fetch_graph(
+  result = await nexandria_client.get_neighbors_edges(
                                       http_pool, 
                                       addresses, 
                                       k, 
                                       limit, 
                                       'eth', 
                                       blocklist=non_eoa_list)
-  logger.debug(f"result from fetch_graph: {result}")
-  logger.info(f"number of edges from fetch_graph: {len(result)}")
+  logger.debug(f"result from get_neighbors_edges: {result}")
+  logger.info(f"number of edges from get_neighbors_edges: {len(result)}")
   return {"result": result}
 
 

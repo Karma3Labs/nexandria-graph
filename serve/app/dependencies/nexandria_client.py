@@ -6,35 +6,28 @@ from ..config import settings
 from dataclasses import dataclass
 import time
 
-class ThreadSafeCounter():
-  def __init__(self):
-    self._counter = 0
+class ThreadSafeEdgeList():
+  def __init__(self, init_addr_list:list[str]):
+    self._edges = []
+    self._addr_set = set(init_addr_list)
     self._lock = Lock()
 
-  # increment and return the counter value
-  def next_value(self):
+  def add_edge(self, edge:dict) -> tuple[bool, int]:
     with self._lock:
-      self._counter += 1
-      return self._counter
+      self._edges.append(edge)
 
-class ThreadSafeDict():
-  def __init__(self):
-    self._dict = {}
-    self._counter = 0
-    self._lock = Lock()
-
-  #add to dict if not present and return true/false
-  def add_if_not_in(self, key, val) -> tuple[bool, int]:
+  def is_first_traversal(self, key:str) -> tuple[bool, int]:
     with self._lock:
-      if not self._dict.get(key):
-        self._dict[key] = val
-        self._counter += 1
-        return True, self._counter
-      return False, self._counter
+      if not key in self._addr_set:
+        self._addr_set.add(key)
+        return True, len(self._addr_set)
+      return False, len(self._addr_set)
 
-  def get(self):
-    with self._lock:
-      return self._dict
+  def get_edge_list(self):
+    return self._edges
+  
+  def get_address_set(self):
+    return self._addr_set
 
 @dataclass(frozen=True)
 class TaskContext:
@@ -48,7 +41,7 @@ class TaskContext:
 async def fetch_address(
   http_pool: aiohttp.ClientSession,
   task_group: asyncio.TaskGroup, 
-  results: ThreadSafeDict,
+  results: ThreadSafeEdgeList,
   address: str,
   context: TaskContext
 ):
@@ -74,12 +67,15 @@ async def fetch_address(
     logger.error(f"Nexandria Internal error: {address}: {resp.get('error')}")
     return
   neighbors = resp.get('neighbors') or ()
+
   for neighbor in neighbors:
     neighbor_addr = neighbor['neighbor_info']['address']
+
     # skip if this is an eoa to contract transfer
     if neighbor_addr in context.blocklist:
       logger.debug(f"skipping fetch for contract address {neighbor_addr}")
       continue
+
     # Nexandria will return transfers_to_neighbor = 0 if:
     # a) transfer is outgoing (or)
     # b) transfer is very old and happened before from_ts
@@ -89,22 +85,23 @@ async def fetch_address(
     v = settings.DEFAULT_TRANSFER_VALUE \
           if neighbor.get("fiat_to_neighbor") is None \
           else float(neighbor.get("fiat_to_neighbor").replace(',',''))
-    key = "-".join((address, neighbor_addr))
     val = {"i":address, "j":neighbor_addr, "v": v}
-    added, counter = results.add_if_not_in(key, val)
-    if added and counter < context.max_num_results:
+    results.add_edge(val)
+
+    is_traverse, counter = results.is_first_traversal(neighbor_addr)
+    if is_traverse and counter < context.max_num_results:
       task_group.create_task(fetch_address(http_pool, task_group, results, neighbor_addr, context))
   return 
  
-async def fetch_graph(
+async def get_neighbors_edges(
     http_pool: aiohttp.ClientSession,
     addresses: list[str],
     k: int,
     limit: int,
     chain: str,
     blocklist: set
-)->list[dict]:
-  results = ThreadSafeDict()
+) -> list[dict]:
+  results = ThreadSafeEdgeList(addresses)
   context = TaskContext(
     max_depth=k,
     max_num_results=limit,
@@ -129,4 +126,4 @@ async def fetch_graph(
                                         )) for addr in addresses]
   # wait for all tasks to complete...
   # report all results
-  return list(results.get().values())
+  return results.get_edge_list()
