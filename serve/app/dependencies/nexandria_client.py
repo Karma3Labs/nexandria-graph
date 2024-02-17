@@ -1,6 +1,6 @@
 import asyncio
 from threading import Lock
-import httpx
+import aiohttp
 import numpy as np
 from loguru import logger
 from ..config import settings
@@ -47,32 +47,34 @@ class TaskContext:
 
 # coroutine task
 async def fetch_address(
-  httpxclient: httpx.AsyncClient,
+  http_pool: aiohttp.ClientSession,
   task_group: asyncio.TaskGroup, 
   results: ThreadSafeDict,
   address: str,
   context: TaskContext
 ):
-  url = f"{context.chain}/v1/address/{address}/neighbors"
+  url = f"{settings.NEXANDRIA_URL}/{context.chain}/v1/address/{address}/neighbors"
   logger.info(f"fetch_address: {url}")
   try:
     start_time = time.perf_counter()
-    r = await httpxclient.get(url, params=context.params)
+    async with http_pool.get(url, 
+                             params=context.params, 
+                             raise_for_status=True) as http_resp:
+      resp = await http_resp.json()
     # TODO replace with a timer context manager
     elapsed_time = time.perf_counter() - start_time
     logger.info(f"{url} took {elapsed_time} secs")
-    r.raise_for_status() # raise exception for any non-200 status
-  except httpx.ReadTimeout as exc:
-    logger.error(f"HTTP ReadTimeout for {exc.request.url}")
+  except asyncio.TimeoutError as exc:
+    logger.error(f"Nexandria timed out for {url}")
     return
-  except httpx.HTTPError as exc:
-    logger.error(f"HTTP Exception for {exc.request.url} - {exc}")
+  except aiohttp.ClientError as exc:
+    logger.error(f"HTTP Exception for {url} - {exc}")
     return
-  if r.json().get('error'):
+  if resp.get('error'):
     # Nexandria always returns HTTP 200 with error in the response body
-    logger.error(f"Nexandria error: {address}: {r.json().get('error')}")
+    logger.error(f"Nexandria Internal error: {address}: {resp.get('error')}")
     return
-  neighbors = r.json().get('neighbors') or ()
+  neighbors = resp.get('neighbors') or ()
   for neighbor in neighbors:
     neighbor_addr = neighbor['neighbor_info']['address']
     # skip if this is an eoa to contract transfer
@@ -92,11 +94,11 @@ async def fetch_address(
     val = {"i":address, "j":neighbor_addr, "v": v}
     added, counter = results.add_if_not_in(key, val)
     if added and counter < context.max_num_results:
-      task_group.create_task(fetch_address(httpxclient, task_group, results, neighbor_addr, context))
+      task_group.create_task(fetch_address(http_pool, task_group, results, neighbor_addr, context))
   return 
  
 async def fetch_graph(
-    httpxclient: httpx.AsyncClient,
+    http_pool: aiohttp.ClientSession,
     addresses: list[str],
     k: int,
     limit: int,
@@ -120,7 +122,7 @@ async def fetch_graph(
   async with asyncio.TaskGroup() as task_group:
     # create and issue tasks
     [task_group.create_task(fetch_address(
-                                        httpxclient, 
+                                        http_pool, 
                                         task_group, 
                                         results, 
                                         addr, 
