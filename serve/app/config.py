@@ -12,7 +12,7 @@ class Settings(BaseSettings):
 
     LOG_LEVEL: str = 'INFO'
 
-    ADDRESS_SKIP_LIST: str = '/tmp/non_eoa_address.txt'
+    NON_EOA_LIST: str = '/tmp/non_eoa_address.csv'
     RELOAD_FREQ_SECS: int = 3600
 
     model_config = SettingsConfigDict(

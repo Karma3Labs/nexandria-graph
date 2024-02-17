@@ -1,6 +1,7 @@
 import asyncio
 from threading import Lock
 import httpx
+import numpy as np
 from loguru import logger
 from ..config import settings
 from dataclasses import dataclass
@@ -42,7 +43,7 @@ class TaskContext:
   max_num_results: int
   chain: str
   params: dict
-  contract_addrs: list # TODO change to numpy Series
+  blocklist: np.ndarray
 
 # coroutine task
 async def fetch_address(
@@ -59,16 +60,23 @@ async def fetch_address(
     r = await httpxclient.get(url, params=context.params)
     # TODO replace with a timer context manager
     elapsed_time = time.perf_counter() - start_time
-    logger.debug(f"{url} took {elapsed_time} secs")
+    logger.info(f"{url} took {elapsed_time} secs")
     r.raise_for_status() # raise exception for any non-200 status
+  except httpx.ReadTimeout as exc:
+    logger.error(f"HTTP ReadTimeout for {exc.request.url}")
+    return
   except httpx.HTTPError as exc:
     logger.error(f"HTTP Exception for {exc.request.url} - {exc}")
     return
-  neighbors = r.json()['neighbors']
+  if r.json().get('error'):
+    # Nexandria always returns HTTP 200 with error in the response body
+    logger.error(f"Nexandria error: {address}: {r.json().get('error')}")
+    return
+  neighbors = r.json().get('neighbors') or ()
   for neighbor in neighbors:
     neighbor_addr = neighbor['neighbor_info']['address']
     # skip if this is an eoa to contract transfer
-    if neighbor_addr in context.contract_addrs:
+    if neighbor_addr in context.blocklist:
       logger.debug(f"skipping fetch for contract address {neighbor_addr}")
       continue
     # Nexandria will return transfers_to_neighbor = 0 if:
@@ -90,9 +98,10 @@ async def fetch_address(
 async def fetch_graph(
     httpxclient: httpx.AsyncClient,
     addresses: list[str],
-    k,
-    limit,
-    chain
+    k: int,
+    limit: int,
+    chain: str,
+    blocklist: np.ndarray
 )->list[dict]:
   results = ThreadSafeDict()
   context = TaskContext(
@@ -100,11 +109,12 @@ async def fetch_graph(
     max_num_results=limit,
     chain=chain,
     params={ 'details': 'summary', 
-            'from_ts': 1672560000, # TODO avoid hardcoding; calculate last 12 months
-            'to_ts': 1704096000,  # TODO avoid hardcoding
+            'from_ts': 1672531200, # since 1/1/2023 00:00:00 UTC  
+            'to_ts': round(time.time()) - 600000,  # now minus 10 mins
             'block_cp': 'native' # to specify the Zero address, typically used for fee/burn/mint transactions
             },
-    contract_addrs=('0x39aa39c021dfbae8fac545936693ac917d5e7563','0x71660c4005ba85c37ccec55d0c4493e66fe775d3')
+    # blocklist = np.array(['0x39aa39c021dfbae8fac545936693ac917d5e7563','0x71660c4005ba85c37ccec55d0c4493e66fe775d3'])
+    blocklist=blocklist
   )
   # create task group
   async with asyncio.TaskGroup() as task_group:

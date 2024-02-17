@@ -6,6 +6,7 @@ from fastapi import FastAPI, Depends, Request, Response
 from contextlib import asynccontextmanager
 import httpx
 import uvicorn
+import pandas as pd
 
 from .dependencies import logging
 from .config import settings
@@ -32,31 +33,30 @@ logger.add(sys.stdout,
 log.basicConfig(handlers=[logging.InterceptHandler()], level=0, force=True)
 log.getLogger("uvicorn").handlers = [logging.InterceptHandler()]
 log.getLogger("uvicorn.access").handlers = [logging.InterceptHandler()]
-# Since we launch uvicorn from command-line and not in code uvicorn.run,
-# changing LOGGING_CONFIG has no effect.
-# from uvicorn.config import LOGGING_CONFIG
-# LOGGING_CONFIG["formatters"]["access"]["fmt"] = \
-#     '%(asctime)s %(levelprefix)s %(client_addr)s - "%(request_line)s" %(status_code)s'
+
 
 app_state = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-  """Execute when API is started"""
-  logger.info(f"{settings}")
-  base_url = settings.NEXANDRIA_URL
-  headers = { 'API-Key': settings.NEXANDRIA_API_KEY.get_secret_value() }
-  timeout = httpx.Timeout(settings.NEXANDRIA_TIMEOUT_SECS)
-  limits = httpx.Limits(max_keepalive_connections=5, max_connections=5)
-  app_state['conn_pool'] = httpx.AsyncClient(
-                                            headers=headers,
-                                            base_url=base_url,
-                                            limits=limits, 
-                                            timeout=timeout)
-  yield
-  """Execute when API is shutdown"""
-  logger.info(f"closing conn_pool: {app_state['conn_pool']}")
-  await app_state['conn_pool'].aclose()
+    """Execute when API is started"""
+    logger.warning(f"{settings}")
+    base_url = settings.NEXANDRIA_URL
+    headers = { 'API-Key': settings.NEXANDRIA_API_KEY.get_secret_value() }
+    timeout = httpx.Timeout(settings.NEXANDRIA_TIMEOUT_SECS)
+    limits = httpx.Limits(max_keepalive_connections=5, max_connections=5)
+    logger.warning(f"creating connection pool")
+    app_state['conn_pool'] = httpx.AsyncClient(
+                                                headers=headers,
+                                                base_url=base_url,
+                                                limits=limits, 
+                                                timeout=timeout)
+    logger.warning(f"loading blocklist")
+    app_state['non_eoa_list'] = pd.read_csv(settings.NON_EOA_LIST, sep=',', header=None).values
+    yield
+    """Execute when API is shutdown"""
+    logger.info(f"closing conn_pool: {app_state['conn_pool']}")
+    await app_state['conn_pool'].aclose()
 
 app = FastAPI(lifespan=lifespan, dependencies=[Depends(logging.get_logger)])
 app.include_router(graph_router, prefix='/graph')
@@ -67,6 +67,7 @@ async def session_middleware(request: Request, call_next):
     logger.info(f"{request.method} {request.url}")
     response = Response("Internal server error", status_code=500)
     request.state.conn_pool = app_state['conn_pool']
+    request.state.non_eoa_list = app_state['non_eoa_list']
     response = await call_next(request)
     elapsed_time = time.perf_counter() - start_time
     logger.info(f"{request.url} took {elapsed_time} secs")
