@@ -23,15 +23,20 @@ async def get_neighbors_eth_transfers(
 ):
   logger.debug(addresses)
   try:
-    result = await graph.get_neighbors_scores(
+    scores = await graph.get_neighbors_scores(
                                         http_pool, 
                                         addresses, 
                                         k, 
                                         limit, 
                                         'eth', 
                                         blocklist=non_eoa_list)
-    logger.debug(f"result from get_neighbors_scores: {result}")
-    logger.info(f"number of neighbors from get_neighbors_scores: {len(result)}")
+    logger.debug(f"result from get_neighbors_scores: {scores}")
+    logger.info(f"number of neighbors from get_neighbors_scores: {len(scores)}")
+    # filter out the input address
+    res = [ score for score in scores if not score['address'] in addresses]
+    logger.debug(f"Result has {len(res)} rows")
+    return {"result": res}
+
     resp = {"result": result}
     return resp
   except Exception as exc:

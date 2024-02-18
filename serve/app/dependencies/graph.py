@@ -11,18 +11,22 @@ class ThreadSafeEdgeList():
   def __init__(self, init_addr_list:list[str]):
     self._edges = []
     self._addr_set = set(init_addr_list)
+    self._counter = 0
     self._lock = Lock()
 
   def add_edge(self, edge:dict) -> tuple[bool, int]:
     with self._lock:
       self._edges.append(edge)
 
-  def is_first_traversal(self, key:str) -> tuple[bool, int]:
+  def try_add_and_traverse(self, key:str, limit:int) -> tuple[bool, bool]:
     with self._lock:
-      if not key in self._addr_set:
+      # print(f"{key},{limit} - {self._counter},{self._addr_set}")
+      if self._counter < limit and not key in self._addr_set:
         self._addr_set.add(key)
-        return True, len(self._addr_set)
-      return False, len(self._addr_set)
+        self._counter += 1
+        return True, True
+      else:
+        return key in self._addr_set, False
 
   def get_edge_list(self):
     return self._edges
@@ -44,7 +48,8 @@ async def fetch_address(
   task_group: asyncio.TaskGroup, 
   results: ThreadSafeEdgeList,
   address: str,
-  context: TaskContext
+  context: TaskContext,
+  current_depth: int,
 ):
   url = f"{settings.NEXANDRIA_URL}/{context.chain}/v1/address/{address}/neighbors"
   logger.info(f"fetch_address: {url}")
@@ -83,15 +88,22 @@ async def fetch_address(
     if neighbor["transfers_to_neighbor"] == 0:
       logger.debug(f"skipping fetch for 0 transfer to address {neighbor_addr}")
       continue
-    v = settings.DEFAULT_TRANSFER_VALUE \
-          if neighbor.get("fiat_to_neighbor") is None \
-          else float(neighbor.get("fiat_to_neighbor").replace(',',''))
-    val = {"i":address, "j":neighbor_addr, "v": v}
-    results.add_edge(val)
 
-    is_traverse, counter = results.is_first_traversal(neighbor_addr)
-    if is_traverse and counter < context.max_num_results:
-      task_group.create_task(fetch_address(http_pool, task_group, results, neighbor_addr, context))
+    is_neighbor, is_traverse = results.try_add_and_traverse(neighbor_addr, context.max_num_results)
+    logger.debug(f"{neighbor_addr}" 
+                 f" is_neighbor:{is_neighbor}" 
+                 f" is_traverse:{is_traverse}"
+                 f" current_depth:{current_depth}")
+    if is_neighbor:
+      v = settings.DEFAULT_TRANSFER_VALUE \
+            if neighbor.get("fiat_to_neighbor") is None \
+            else float(neighbor.get("fiat_to_neighbor").replace(',',''))
+      val = {"i":address, "j":neighbor_addr, "v": v}
+      results.add_edge(val)
+      if is_traverse and current_depth < context.max_depth:
+        task_group.create_task(
+          fetch_address(
+            http_pool, task_group, results, neighbor_addr, context, current_depth+1))
   return 
  
 async def get_neighbors_scores(
@@ -124,7 +136,8 @@ async def get_neighbors_scores(
                                         task_group, 
                                         results, 
                                         addr, 
-                                        context
+                                        context,
+                                        current_depth=1
                                         )) for addr in addresses]
   # wait for all tasks to complete...
   logger.info(f"nexandria graph took {time.perf_counter() - start_time} secs ")
@@ -142,12 +155,13 @@ async def get_neighbors_scores(
   max_id = len(addr_ids)
 
   logger.info("calling go_eigentrust")
-  i_scores = await eigentrust_client.go_eigentrust(pretrust=pretrust, 
+  i_scores = await eigentrust_client \
+                    .go_eigentrust(pretrust=pretrust, 
                                   max_pt_id=max_id,
                                   localtrust=localtrust,
                                   max_lt_id=max_id)
   
-  addr_scores = [{'i': addr_ids[i_score['i']], 'v': i_score['v']} for i_score in i_scores]
+  addr_scores = [{'address': addr_ids[i_score['i']], 'score': i_score['v']} for i_score in i_scores]
   logger.info(f"eigentrust compute took {time.perf_counter() - start_time} secs ")
 
   # report all results
