@@ -3,6 +3,7 @@ from threading import Lock
 import aiohttp
 from loguru import logger
 from ..config import settings
+from . import eigentrust_client
 from dataclasses import dataclass
 import time
 
@@ -93,7 +94,7 @@ async def fetch_address(
       task_group.create_task(fetch_address(http_pool, task_group, results, neighbor_addr, context))
   return 
  
-async def get_neighbors_edges(
+async def get_neighbors_scores(
     http_pool: aiohttp.ClientSession,
     addresses: list[str],
     k: int,
@@ -125,5 +126,23 @@ async def get_neighbors_edges(
                                         context
                                         )) for addr in addresses]
   # wait for all tasks to complete...
+    
+  addr_ids = list(results.get_address_set())
+  edges = results.get_edge_list()
+
+  pt_len = len(addresses)
+  pretrust = [{'i': addr_ids.index(addr), 'v': 1/pt_len} for addr in addresses]
+
+  localtrust = [{'i': addr_ids.index(edge['i']),
+                 'j': addr_ids.index(edge['j']), 
+                 'v': edge['v']} for edge in edges]
+  max_id = len(addr_ids)
+
+  logger.info("calling go_eigentrust")
+  scores = await eigentrust_client.go_eigentrust(pretrust=pretrust, 
+                                  max_pt_id=max_id,
+                                  localtrust=localtrust,
+                                  max_lt_id=max_id)
+
   # report all results
-  return results.get_edge_list()
+  return scores
