@@ -1,0 +1,14 @@
+services:
+  nexandria-graph:
+    build: .
+    container_name: nexandria-graph
+    image: nexandria-graph:latest
+    volumes:
+      - /tmp:/tmp
+    environment:
+      PORT: 8000
+    ports:
+      - '8900:8000'
+    restart: "no"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

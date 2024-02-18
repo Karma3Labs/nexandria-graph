@@ -9,7 +9,7 @@ import uvicorn
 
 from .dependencies import logging
 from .config import settings
-from .routers.graph_router import router as graph_router
+from .routers.trust_router import router as trust_router
 
 from loguru import logger
 
@@ -57,7 +57,7 @@ async def lifespan(app: FastAPI):
     await app_state['conn_pool'].close()
 
 app = FastAPI(lifespan=lifespan, dependencies=[Depends(logging.get_logger)])
-app.include_router(graph_router, prefix='/graph')
+app.include_router(trust_router, prefix='/scores')
 
 @app.middleware("http")
 async def session_middleware(request: Request, call_next):

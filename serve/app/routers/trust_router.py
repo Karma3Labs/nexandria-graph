@@ -9,10 +9,10 @@ from ..dependencies import http_pool
 from ..dependencies import blocklist
 from fastapi import HTTPException
 
-router = APIRouter(tags=["graphs"])
+router = APIRouter(tags=["scores"])
 
-@router.post("/neighbors/eth_transfers")
-@router.get("/neighbors/eth_transfers")
+@router.post("/neighbors/eth")
+@router.get("/neighbors/eth")
 async def get_neighbors_eth_transfers(
   # Example: -d '["0x4114e33eb831858649ea3702e1c9a2db3f626446", "0x8773442740c17c9d0f0b87022c722f9a136206ed"]'
   addresses: list[str],
@@ -36,9 +36,6 @@ async def get_neighbors_eth_transfers(
     res = [ score for score in scores if not score['address'] in addresses]
     logger.debug(f"Result has {len(res)} rows")
     return {"result": res}
-
-    resp = {"result": result}
-    return resp
   except Exception as exc:
     logger.error(f"Unknown error: {exc}")
     raise HTTPException(status_code=500, detail="Unknown error")
