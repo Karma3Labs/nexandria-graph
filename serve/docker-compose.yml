@@ -4,7 +4,7 @@ services:
     container_name: nexandria-graph
     image: nexandria-graph:latest
     volumes:
-      - /tmp:/tmp
+      - /home/ubuntu/data:/tmp
     environment:
       PORT: 8000
     ports:
@@ -12,3 +12,9 @@ services:
     restart: "no"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    networks:
+      - on-chain-feed-network
+networks:
+  on-chain-feed-network:
+    name: on-chain-feed-network
+    external: true
