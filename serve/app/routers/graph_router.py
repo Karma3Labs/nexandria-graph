@@ -4,9 +4,10 @@ from fastapi import APIRouter, Depends, Query
 import aiohttp
 from loguru import logger
 
-from ..dependencies import nexandria_client
+from ..dependencies import graph
 from ..dependencies import http_pool
 from ..dependencies import blocklist
+from fastapi import HTTPException
 
 router = APIRouter(tags=["graphs"])
 
@@ -21,15 +22,25 @@ async def get_neighbors_eth_transfers(
   non_eoa_list: set = Depends(blocklist.get_non_eoa_list)
 ):
   logger.debug(addresses)
-  result = await nexandria_client.get_neighbors_edges(
-                                      http_pool, 
-                                      addresses, 
-                                      k, 
-                                      limit, 
-                                      'eth', 
-                                      blocklist=non_eoa_list)
-  logger.debug(f"result from get_neighbors_edges: {result}")
-  logger.info(f"number of edges from get_neighbors_edges: {len(result)}")
-  return {"result": result}
+  try:
+    scores = await graph.get_neighbors_scores(
+                                        http_pool, 
+                                        addresses, 
+                                        k, 
+                                        limit, 
+                                        'eth', 
+                                        blocklist=non_eoa_list)
+    logger.debug(f"result from get_neighbors_scores: {scores}")
+    logger.info(f"number of neighbors from get_neighbors_scores: {len(scores)}")
+    # filter out the input address
+    res = [ score for score in scores if not score['address'] in addresses]
+    logger.debug(f"Result has {len(res)} rows")
+    return {"result": res}
+
+    resp = {"result": result}
+    return resp
+  except Exception as exc:
+    logger.error(f"Unknown error: {exc}")
+    raise HTTPException(status_code=500, detail="Unknown error")
 
 

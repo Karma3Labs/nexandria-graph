@@ -8,6 +8,13 @@ class Settings(BaseSettings):
     NEXANDRIA_TIMEOUT_MS: int = 5000
     NEXANDRIA_RATE_LIMIT: int = 12
 
+    GO_EIGENTRUST_URL:str = 'http://localhost:8080'
+    GO_EIGENTRUST_TIMEOUT_MS:int = 3000
+    EIGENTRUST_ALPHA:float = 0.5
+    EIGENTRUST_EPSILON:float = 1.0
+    EIGENTRUST_MAX_ITER:int = 50
+    EIGENTRUST_FLAT_TAIL:int = 2
+    
     DEFAULT_TRANSFER_VALUE: float = 0.0001
 
     LOG_LEVEL: str = 'INFO'
