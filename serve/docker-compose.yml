@@ -5,8 +5,6 @@ services:
     image: nexandria-graph:latest
     volumes:
       - /home/ubuntu/data:/tmp
-    environment:
-      PORT: 8000
     ports:
       - '8900:8000'
     restart: "no"
