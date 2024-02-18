@@ -11,7 +11,6 @@ async def go_eigentrust(
     localtrust: list[dict],
     max_lt_id: int,
 ):
-  start_time = time.perf_counter()
   req = {
   	"pretrust": {
   		"scheme": 'inline',
@@ -31,6 +30,7 @@ async def go_eigentrust(
 
   logger.trace(req)
   # TODO replace requests with aiohttp
+  start_time = time.perf_counter()
   response = requests.post(f"{settings.GO_EIGENTRUST_URL}/basic/v1/compute",
                            json=req,
                            headers = {
@@ -38,10 +38,10 @@ async def go_eigentrust(
                               'Content-Type': 'application/json'
                               },
                            timeout=settings.GO_EIGENTRUST_TIMEOUT_MS)
+  logger.info(f"go-eigentrust took {time.perf_counter() - start_time} secs ")
 
   if response.status_code != 200:
       logger.error(f"Server error: {response.status_code}:{response.reason}")
       raise HTTPException(status_code=response.status_code, detail=response.reason)
   trustscores = response.json()['entries']
-  logger.info(f"eigentrust took {time.perf_counter() - start_time} secs for {len(trustscores)} scores")
   return trustscores

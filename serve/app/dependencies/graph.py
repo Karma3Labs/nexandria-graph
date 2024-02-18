@@ -102,6 +102,7 @@ async def get_neighbors_scores(
     chain: str,
     blocklist: set
 ) -> list[dict]:
+  start_time = time.perf_counter()
   results = ThreadSafeEdgeList(addresses)
   context = TaskContext(
     max_depth=k,
@@ -126,7 +127,9 @@ async def get_neighbors_scores(
                                         context
                                         )) for addr in addresses]
   # wait for all tasks to complete...
-    
+  logger.info(f"nexandria graph took {time.perf_counter() - start_time} secs ")
+  
+  start_time = time.perf_counter()
   addr_ids = list(results.get_address_set())
   edges = results.get_edge_list()
 
@@ -139,10 +142,13 @@ async def get_neighbors_scores(
   max_id = len(addr_ids)
 
   logger.info("calling go_eigentrust")
-  scores = await eigentrust_client.go_eigentrust(pretrust=pretrust, 
+  i_scores = await eigentrust_client.go_eigentrust(pretrust=pretrust, 
                                   max_pt_id=max_id,
                                   localtrust=localtrust,
                                   max_lt_id=max_id)
+  
+  addr_scores = [{'i': addr_ids[i_score['i']], 'v': i_score['v']} for i_score in i_scores]
+  logger.info(f"eigentrust compute took {time.perf_counter() - start_time} secs ")
 
   # report all results
-  return scores
+  return addr_scores
