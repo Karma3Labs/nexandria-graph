@@ -1,8 +1,9 @@
 import sys
 import time
 import logging as log
-import aiohttp
+import asyncio
 
+import aiohttp
 from fastapi import FastAPI, Depends, Request, Response
 from contextlib import asynccontextmanager
 import uvicorn
@@ -48,6 +49,8 @@ async def lifespan(app: FastAPI):
     app_state['conn_pool'] = aiohttp.ClientSession(connector=conn, 
                                                    timeout=timeout,
                                                    headers=headers)
+    app_state['sema'] = asyncio.Semaphore(value=settings.NEXANDRIA_MAX_CONCURRENCY)
+
     logger.warning(f"loading blocklist")
     # TODO background loader to reload whenever a new version of blocklist is available
     app_state['non_eoa_list'] = set(line.strip() for line in open(settings.NON_EOA_LIST))
@@ -65,6 +68,7 @@ async def session_middleware(request: Request, call_next):
     logger.info(f"{request.method} {request.url}")
     response = Response("Internal server error", status_code=500)
     request.state.conn_pool = app_state['conn_pool']
+    request.state.sema = app_state['sema']
     request.state.non_eoa_list = app_state['non_eoa_list']
     response = await call_next(request)
     elapsed_time = time.perf_counter() - start_time

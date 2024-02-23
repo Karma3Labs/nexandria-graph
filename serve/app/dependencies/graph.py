@@ -44,6 +44,7 @@ class TaskContext:
 
 # coroutine task
 async def fetch_address(
+  sema: asyncio.Semaphore,
   http_pool: aiohttp.ClientSession,
   task_group: asyncio.TaskGroup, 
   results: ThreadSafeEdgeList,
@@ -51,68 +52,76 @@ async def fetch_address(
   context: TaskContext,
   current_depth: int,
 ):
-  url = f"{settings.NEXANDRIA_URL}/{context.chain}/v1/address/{address}/neighbors"
-  logger.info(f"fetch_address: {url}")
   try:
-    start_time = time.perf_counter()
-    async with http_pool.get(url, 
-                             params=context.params, 
-                             raise_for_status=True) as http_resp:
-      resp = await http_resp.json()
-    # TODO replace with a timer context manager
-    elapsed_time = time.perf_counter() - start_time
-    logger.info(f"{url} took {elapsed_time} secs")
-  except asyncio.TimeoutError as exc:
-    logger.error(f"Nexandria timed out for {url}?{context.params}")
-    return
-  except aiohttp.ClientError as exc:
-    logger.error(f"HTTP Exception for {url}?{context.params} - {exc}")
-    return
-  if resp.get('error'):
-    # Nexandria always returns HTTP 200 with error in the response body
-    logger.error(f"Nexandria Internal error: {url}?{context.params} {resp.get('error')}")
-    return
-  neighbors = resp.get('neighbors') or ()
+    url = f"{settings.NEXANDRIA_URL}/{context.chain}/v1/address/{address}/neighbors"
+    logger.info(f"fetch_address: {url}")
+    try:
+      async with sema:
+        start_time = time.perf_counter()
+        async with http_pool.get(url, 
+                                params=context.params, 
+                                raise_for_status=True) as http_resp:
+          resp = await http_resp.json()
+        # TODO replace with a timer context manager
+        elapsed_time = time.perf_counter() - start_time
+        logger.info(f"{url} took {elapsed_time} secs")
+    except asyncio.TimeoutError as exc:
+      logger.error(f"Nexandria timed out for {url}?{context.params}")
+      return
+    except aiohttp.ClientError as exc:
+      logger.error(f"HTTP Exception for {url}?{context.params} - {exc}")
+      return
+    except Exception as exc:
+      logger.error(f"Unknown error: {exc}")
+      return
+    if resp.get('error'):
+      # Nexandria always returns HTTP 200 with error in the response body
+      logger.error(f"Nexandria Internal error: {url}?{context.params} {resp.get('error')}")
+      return
+    neighbors = resp.get('neighbors') or ()
 
-  for neighbor in neighbors:
-    neighbor_addr = neighbor['neighbor_info']['address']
+    for neighbor in neighbors:
+      neighbor_addr = neighbor['neighbor_info']['address']
 
-    # skip if this is an eoa to contract transfer
-    if neighbor_addr in context.blocklist:
-      logger.debug(f"skipping fetch for contract address {neighbor_addr}")
-      continue
+      # skip if this is an eoa to contract transfer
+      if neighbor_addr in context.blocklist:
+        logger.debug(f"skipping fetch for contract address {neighbor_addr}")
+        continue
 
-    # Nexandria will return transfers_to_neighbor = 0 if:
-    # a) transfer is outgoing (or)
-    # b) transfer is very old and happened before from_ts
-    if neighbor["transfers_to_neighbor"] == 0:
-      logger.debug(f"skipping fetch for 0 transfer to address {neighbor_addr}")
-      continue
+      # Nexandria will return transfers_to_neighbor = 0 if:
+      # a) transfer is outgoing (or)
+      # b) transfer is very old and happened before from_ts
+      if neighbor["transfers_to_neighbor"] == 0:
+        logger.debug(f"skipping fetch for 0 transfer to address {neighbor_addr}")
+        continue
 
-    is_neighbor, is_traverse = results.try_add_and_traverse(neighbor_addr, context.max_num_results)
-    logger.debug(f"{neighbor_addr}" 
-                 f" is_neighbor:{is_neighbor}" 
-                 f" is_traverse:{is_traverse}"
-                 f" current_depth:{current_depth}")
-    if is_neighbor:
-      v = settings.DEFAULT_TRANSFER_VALUE \
-            if neighbor.get("fiat_to_neighbor") is None \
-            else float(neighbor.get("fiat_to_neighbor").replace(',',''))
-      val = {"i":address, "j":neighbor_addr, "v": v}
-      results.add_edge(val)
-      if is_traverse and current_depth < context.max_depth:
-        task_group.create_task(
-          fetch_address(
-            http_pool, task_group, results, neighbor_addr, context, current_depth+1))
+      is_neighbor, is_traverse = results.try_add_and_traverse(neighbor_addr, context.max_num_results)
+      logger.debug(f"{neighbor_addr}" 
+                  f" is_neighbor:{is_neighbor}" 
+                  f" is_traverse:{is_traverse}"
+                  f" current_depth:{current_depth}")
+      if is_neighbor:
+        v = settings.DEFAULT_TRANSFER_VALUE \
+              if neighbor.get("fiat_to_neighbor") is None \
+              else float(neighbor.get("fiat_to_neighbor").replace(',',''))
+        val = {"i":address, "j":neighbor_addr, "v": v}
+        results.add_edge(val)
+        if is_traverse and current_depth < context.max_depth:
+          task_group.create_task(
+            fetch_address(
+              sema, http_pool, task_group, results, neighbor_addr, context, current_depth+1))
+  except Exception as exc:
+    logger.error(f"Unknown error: {exc}")
   return 
  
 async def get_neighbors_scores(
+    sema: asyncio.Semaphore,
     http_pool: aiohttp.ClientSession,
     addresses: list[str],
     k: int,
     limit: int,
     chain: str,
-    blocklist: set
+    blocklist: set,
 ) -> list[dict]:
   start_time = time.perf_counter()
   match chain:
@@ -139,10 +148,11 @@ async def get_neighbors_scores(
   async with asyncio.TaskGroup() as task_group:
     # create and issue tasks
     [task_group.create_task(fetch_address(
+                                        sema,
                                         http_pool, 
                                         task_group, 
                                         results, 
-                                        addr.lower(), 
+                                        addr, 
                                         context,
                                         current_depth=1
                                         )) for addr in addresses]
@@ -153,9 +163,15 @@ async def get_neighbors_scores(
   addr_ids = list(results.get_address_set())
   edges = results.get_edge_list()
 
+  if len(edges) <= 0:
+    logger.error(f"No edges found for {addresses}")
+    return []
+  
   pt_len = len(addresses)
+  logger.info(f"generating pretrust with {addresses}")
   pretrust = [{'i': addr_ids.index(addr), 'v': 1/pt_len} for addr in addresses]
 
+  logger.info(f"generating localtrust with {len(addr_ids)} addresses and  {len(edges)} edges")
   localtrust = [{'i': addr_ids.index(edge['i']),
                  'j': addr_ids.index(edge['j']), 
                  'v': edge['v']} for edge in edges]
