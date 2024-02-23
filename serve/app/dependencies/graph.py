@@ -63,14 +63,14 @@ async def fetch_address(
     elapsed_time = time.perf_counter() - start_time
     logger.info(f"{url} took {elapsed_time} secs")
   except asyncio.TimeoutError as exc:
-    logger.error(f"Nexandria timed out for {url}")
+    logger.error(f"Nexandria timed out for {url}?{context.params}")
     return
   except aiohttp.ClientError as exc:
-    logger.error(f"HTTP Exception for {url} - {exc}")
+    logger.error(f"HTTP Exception for {url}?{context.params} - {exc}")
     return
   if resp.get('error'):
     # Nexandria always returns HTTP 200 with error in the response body
-    logger.error(f"Nexandria Internal error: {address}: {resp.get('error')}")
+    logger.error(f"Nexandria Internal error: {url}?{context.params} {resp.get('error')}")
     return
   neighbors = resp.get('neighbors') or ()
 
@@ -115,13 +115,20 @@ async def get_neighbors_scores(
     blocklist: set
 ) -> list[dict]:
   start_time = time.perf_counter()
+  match chain:
+    case 'ethereum' | 'eth':
+      chain = 'eth' # nexandria only recognizes eth as chain name
+      from_ts = 1672531200 # since 1/1/2023 00:00:00 UTC
+    case 'base': 
+      from_ts = 1686790800 # since 6/15/2023 00:00:00 UTC
+
   results = ThreadSafeEdgeList(addresses)
   context = TaskContext(
     max_depth=k,
     max_num_results=limit,
     chain=chain,
     params={ 'details': 'summary', 
-            'from_ts': 1672531200, # since 1/1/2023 00:00:00 UTC  
+            'from_ts': from_ts, 
             'to_ts': round(time.time()) - 600000,  # now minus 10 mins
             'block_cp': 'native' # to specify the Zero address, typically used for fee/burn/mint transactions
             },
@@ -135,7 +142,7 @@ async def get_neighbors_scores(
                                         http_pool, 
                                         task_group, 
                                         results, 
-                                        addr, 
+                                        addr.lower(), 
                                         context,
                                         current_depth=1
                                         )) for addr in addresses]

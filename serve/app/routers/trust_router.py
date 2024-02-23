@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query,Path
 import aiohttp
 from loguru import logger
 
@@ -11,12 +11,13 @@ from fastapi import HTTPException
 
 router = APIRouter(tags=["scores"])
 
-@router.post("/neighbors/eth")
-@router.get("/neighbors/eth")
+@router.post("/neighbors/{blockchain}")
+@router.get("/neighbors/{blockchain}")
 async def get_neighbors_eth_transfers(
   # Example: -d '["0x4114e33eb831858649ea3702e1c9a2db3f626446", "0x8773442740c17c9d0f0b87022c722f9a136206ed"]'
   addresses: list[str],
-  k: Annotated[int, Query(le=5)] = 2,
+  blockchain: Annotated[str, Path()],
+  k: Annotated[int, Query(le=10)] = 5,
   limit: Annotated[int | None, Query(le=1000)] = 100,
   http_pool: aiohttp.ClientSession = Depends(http_pool.get_async_client),
   non_eoa_list: set = Depends(blocklist.get_non_eoa_list)
@@ -28,7 +29,7 @@ async def get_neighbors_eth_transfers(
                                         addresses, 
                                         k, 
                                         limit, 
-                                        'eth', 
+                                        blockchain, 
                                         blocklist=non_eoa_list)
     logger.debug(f"result from get_neighbors_scores: {scores}")
     logger.info(f"number of neighbors from get_neighbors_scores: {len(scores)}")
