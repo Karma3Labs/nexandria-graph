@@ -64,7 +64,16 @@ async def fetch_address(
           resp = await http_resp.json()
         # TODO replace with a timer context manager
         elapsed_time = time.perf_counter() - start_time
-        logger.info(f"{url} took {elapsed_time} secs")
+        logger.info(f"Summary {url} took {elapsed_time} secs")
+        if resp.get('error') and resp.get('error').get('code') == 422:
+          logger.info(f"Nexandria error 422: large account: retry {url}")
+          start_time = time.perf_counter()
+          async with http_pool.get(url, 
+                        params={'details': 'partial', 'block_cp': 'native'},
+                        raise_for_status=True) as http_resp:
+            resp = await http_resp.json()
+          elapsed_time = time.perf_counter() - start_time
+          logger.info(f"Partial {url} took {elapsed_time} secs")
     except asyncio.TimeoutError as exc:
       logger.error(f"Nexandria timed out for {url}?{context.params}")
       return
