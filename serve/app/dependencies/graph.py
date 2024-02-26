@@ -65,7 +65,9 @@ async def fetch_address(
         # TODO replace with a timer context manager
         elapsed_time = time.perf_counter() - start_time
         logger.info(f"Summary {url} took {elapsed_time} secs")
-        if resp.get('error') and resp.get('error').get('code') == 422:
+        if resp.get('error') and \
+          resp.get('error').get('details').startswith('large accounts') \
+        :
           logger.info(f"Nexandria error 422: large account: retry {url}")
           start_time = time.perf_counter()
           async with http_pool.get(url, 
