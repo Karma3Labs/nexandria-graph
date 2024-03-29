@@ -22,7 +22,7 @@ level_per_module = {
 }
 logger.add(sys.stdout, 
            colorize=True, 
-           format="<green>{time:HH:mm:ss}</green> | {module}:{file}:{function}:{line} | {level} | <level>{message}</level>",
+           format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | {module}:{file}:{function}:{line} | {level} | <level>{message}</level>",
            filter=level_per_module,
            level=0)
 # logger.add(sys.stdout, 

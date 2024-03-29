@@ -11,7 +11,7 @@ router = APIRouter(tags=["scores"])
 
 @router.post("/neighbors/{blockchain}")
 @router.get("/neighbors/{blockchain}")
-async def get_neighbors_eth_transfers(
+async def get_neighbors_transfers(
   # Example: -d '["0x4114e33eb831858649ea3702e1c9a2db3f626446", "0x8773442740c17c9d0f0b87022c722f9a136206ed"]'
   addresses: list[str],
   blockchain: Annotated[str, Path()],
@@ -21,6 +21,16 @@ async def get_neighbors_eth_transfers(
   sema: asyncio.Semaphore = Depends(sema.get_semaphore),
   non_eoa_list: set = Depends(blocklist.get_non_eoa_list),
 ):
+  """
+  Given a list of input addresses, return a list of addresses
+    trusted by the extended network of the input addresses. \n
+  The addresses in the result are ranked by a relative scoring mechanism 
+    that is based on the EigenTrust algorithm. \n
+  The extended network is derived based on a BFS traversal of the social engagement graph 
+    upto **k** degrees and until **limit** is reached. \n
+  Example: ["0x4114e33eb831858649ea3702e1c9a2db3f626446", "0x8773442740c17c9d0f0b87022c722f9a136206ed"] \n
+  **IMPORTANT**: Please use HTTP POST method and not GET method.
+  """
   logger.debug(list(map(str.lower,addresses)))
   try:
     scores = await graph.get_neighbors_scores(
